@@ -58,12 +58,14 @@ private[transport] class TopicSubscription(
         }
       }
 
-      () => {
-        lock.synchronized {
-          subscribersRef.set(subscribersRef.get.filterNot(_ == subscriber))
-          if (subscribersRef.get.isEmpty) {
-            cancelable.cancel()
-            releaseFun()
+      new Cancelable {
+        override def cancel(): Unit = {
+          lock.synchronized {
+            subscribersRef.set(subscribersRef.get.filterNot(_ == subscriber))
+            if (subscribersRef.get.isEmpty) {
+              cancelable.cancel()
+              releaseFun()
+            }
           }
         }
       }
