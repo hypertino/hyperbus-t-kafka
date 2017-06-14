@@ -39,7 +39,7 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
 
   override def publish(message: RequestBase): Task[PublishResult] = {
     routesIndex.lookupAll(message).headOption map (publishToRoute(_, message)) getOrElse {
-      throw new NoTransportRouteException(s"Kafka producer (client). Hri: ${message.headers.hri}")
+      throw new NoTransportRouteException(s"Kafka producer (client): ${message.headers.hrl}")
     }
   }
 
@@ -63,8 +63,8 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
       }
       else {
         val recordKey = route.kafkaPartitionKeys.map { key: String ⇒ // todo: check partition key logic
-          message.headers.hri.query.toMap.getOrElse(key,
-            throw new KafkaPartitionKeyIsNotDefined(s"Argument $key is not defined for ${message.headers.hri}")
+          message.headers.hrl.query.toMap.getOrElse(key,
+            throw new KafkaPartitionKeyIsNotDefined(s"Argument $key is not defined for ${message.headers.hrl}")
           )
         }.foldLeft("")(_ + "," + _.toString.replace("\\", "\\\\").replace(",", "\\,"))
 
