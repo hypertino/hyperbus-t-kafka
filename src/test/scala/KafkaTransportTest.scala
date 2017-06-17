@@ -35,7 +35,7 @@ case class MockRequest2(partitionId: String, body: MockBody) extends Request[Moc
 
 class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with BeforeAndAfter with Eventually {
   implicit val mcx = MessagingContext("123")
-  val requestDeserializer: RequestDeserializer[MockRequest] = MockRequest.sapply(_: Reader, _: HeadersMap)
+  val requestDeserializer: RequestDeserializer[MockRequest] = MockRequest.apply(_: Reader, _: HeadersMap)
   implicit val scheduler = monix.execution.Scheduler.Implicits.global
   implicit val injector = new Module {
     bind [Scheduler] to scheduler
