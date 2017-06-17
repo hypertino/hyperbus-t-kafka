@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.hypertino.binders.value.Obj
 import com.typesafe.config.ConfigFactory
 import com.hypertino.hyperbus.model.annotations.{body, request}
-import com.hypertino.hyperbus.model.{Body, DynamicRequest, MessagingContext, Method, Request, ResponseHeaders}
+import com.hypertino.hyperbus.model.{Body, DynamicRequest, HeadersMap, MessagingContext, Method, Request, ResponseHeaders}
 import com.hypertino.hyperbus.serialization.{RequestDeserializer, ResponseBaseDeserializer}
 import com.hypertino.hyperbus.transport.api._
 import com.hypertino.hyperbus.transport.api.matchers.RequestMatcher
@@ -35,7 +35,7 @@ case class MockRequest2(partitionId: String, body: MockBody) extends Request[Moc
 
 class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with BeforeAndAfter with Eventually {
   implicit val mcx = MessagingContext("123")
-  val requestDeserializer: RequestDeserializer[MockRequest] = MockRequest.apply(_: Reader, _: Obj)
+  val requestDeserializer: RequestDeserializer[MockRequest] = MockRequest.sapply(_: Reader, _: HeadersMap)
   implicit val scheduler = monix.execution.Scheduler.Implicits.global
   implicit val injector = new Module {
     bind [Scheduler] to scheduler
