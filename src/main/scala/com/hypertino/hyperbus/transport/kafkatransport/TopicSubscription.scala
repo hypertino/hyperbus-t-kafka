@@ -74,7 +74,7 @@ private[transport] class TopicSubscription(
 
   // todo: handle deserialization/onNext exceptions
   override def onNext(elem: ConsumerRecord[String, String]): Future[Ack] = {
-    MessageReader.from[RequestBase](elem.value(), (reader: Reader, headersMap: HeadersMap) ⇒ {
+    MessageReader.fromString[RequestBase](elem.value(), (reader: Reader, headersMap: HeadersMap) ⇒ {
       reader.mark(0)
       implicit val fakeRequest: RequestBase = DynamicRequest(EmptyBody, RequestHeaders(headersMap))
 
