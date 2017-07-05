@@ -2,6 +2,7 @@ import java.io.Reader
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.hypertino.binders.value.Obj
+import com.hypertino.hyperbus.Hyperbus
 import com.typesafe.config.ConfigFactory
 import com.hypertino.hyperbus.model.annotations.{body, request}
 import com.hypertino.hyperbus.model.{Body, DynamicRequest, HeadersMap, MessagingContext, Method, Request, ResponseHeaders}
@@ -42,15 +43,14 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
   }
   implicit val defaultPatience = PatienceConfig(timeout =  Span(5, Seconds), interval = Span(50, Millis))
 
-  var transportManager: TransportManager = null
+  var hyperbus: Hyperbus = null
   before {
-    val transportConfiguration = TransportConfigurationLoader.fromConfig(ConfigFactory.load(), injector)
-    transportManager = new TransportManager(transportConfiguration)
+    hyperbus = new Hyperbus(ConfigFactory.load())(injector)
   }
 
   after {
-    if (transportManager != null) {
-      Await.result(transportManager.shutdown(10.seconds).runAsync, 10.seconds)
+    if (hyperbus != null) {
+      Await.result(hyperbus.shutdown(10.seconds).runAsync, 10.seconds)
     }
   }
 
@@ -64,15 +64,15 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
       }
 
       // read previous messages if any
-      val cancelable1 = transportManager.events[MockRequest](RequestMatcher("hb://mock", Method.POST), "sub1", MockRequest.apply).subscribe(subscriber1)
+      val cancelable1 = hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber1)
       Thread.sleep(3000)
       cancelable1.cancel()
 
       Thread.sleep(1000)
 
       Task.gatherUnordered(List(
-        transportManager.publish(MockRequest("1", MockBody("12345"))),
-        transportManager.publish(MockRequest("2", MockBody("54321"))))
+        hyperbus.publish(MockRequest("1", MockBody("12345"))),
+        hyperbus.publish(MockRequest("2", MockBody("54321"))))
       ).runOnComplete { r ⇒
         r.get.foreach { publishResult ⇒
           publishResult.sent should equal(Some(true))
@@ -89,9 +89,9 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
       }
 
       val cancelables = List(
-        transportManager.events[MockRequest](RequestMatcher("hb://mock", Method.POST), "sub1", MockRequest.apply).subscribe(subscriber2),
-        transportManager.events[MockRequest](RequestMatcher("hb://mock", Method.POST), "sub1", MockRequest.apply).subscribe(subscriber2),
-        transportManager.events[MockRequest](RequestMatcher("hb://mock", Method.POST), "sub2", MockRequest.apply).subscribe(subscriber2)
+        hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber2),
+        hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber2),
+        hyperbus.events[MockRequest](Some("sub2")).subscribe(subscriber2)
       )
 
       Thread.sleep(1000) // we need to wait until subscriptions will go acros the
