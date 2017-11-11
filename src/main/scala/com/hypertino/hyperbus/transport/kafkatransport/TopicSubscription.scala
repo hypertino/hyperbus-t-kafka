@@ -3,7 +3,7 @@ package com.hypertino.hyperbus.transport.kafkatransport
 import java.io.Reader
 
 import com.hypertino.binders.value.Obj
-import com.hypertino.hyperbus.model.{DynamicRequest, EmptyBody, HeadersMap, RequestBase, RequestHeaders}
+import com.hypertino.hyperbus.model.{DynamicRequest, EmptyBody, Headers, RequestBase, RequestHeaders}
 import com.hypertino.hyperbus.serialization.{MessageReader, RequestBaseDeserializer}
 import com.hypertino.hyperbus.transport.api.matchers.RequestMatcher
 import monix.eval.Task
@@ -74,13 +74,13 @@ private[transport] class TopicSubscription(
 
   // todo: handle deserialization/onNext exceptions
   override def onNext(elem: ConsumerRecord[String, String]): Future[Ack] = {
-    MessageReader.fromString[RequestBase](elem.value(), (reader: Reader, headersMap: HeadersMap) ⇒ {
+    MessageReader.fromString[RequestBase](elem.value(), (reader: Reader, headers: Headers) ⇒ {
       reader.mark(0)
-      implicit val fakeRequest: RequestBase = DynamicRequest(EmptyBody, RequestHeaders(headersMap))
+      implicit val fakeRequest: RequestBase = DynamicRequest(EmptyBody, RequestHeaders(headers))
 
       val (subscriber, matcher, inputDeserializer) = getRandom(subscribersRef.get).get
       if (matcher.matchMessage(fakeRequest)) {
-        val msg = inputDeserializer(reader, headersMap)
+        val msg = inputDeserializer(reader, headers)
         subscriber.onNext(msg)
         reader.reset()
       }
