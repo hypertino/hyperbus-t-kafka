@@ -59,8 +59,8 @@ class KafkaServerTransport(
         subscriptions.map(_._2.close(duration))
       }
       .timeout(duration)
-      .map {
-        _.forall(_ == true)
+      .map { _ ⇒
+        true
       }
   }
 

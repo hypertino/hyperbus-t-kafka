@@ -1,45 +1,33 @@
 import java.io.Reader
 import java.util.concurrent.atomic.AtomicInteger
 
-import com.hypertino.binders.value.Obj
+import com.hypertino.binders.value.{Number, Obj, Text}
 import com.hypertino.hyperbus.Hyperbus
-import com.typesafe.config.ConfigFactory
 import com.hypertino.hyperbus.model.annotations.{body, request}
-import com.hypertino.hyperbus.model.{Body, DynamicRequest, Headers, MessagingContext, Method, Request, ResponseHeaders}
-import com.hypertino.hyperbus.serialization.{RequestDeserializer, ResponseBaseDeserializer}
-import com.hypertino.hyperbus.transport.api._
+import com.hypertino.hyperbus.model.{Body, DynamicBody, DynamicRequest, DynamicRequestObservableMeta, EmptyBody, HRL, Headers, MessagingContext, Method, Request}
+import com.hypertino.hyperbus.serialization.RequestDeserializer
+import com.hypertino.hyperbus.transport.KafkaPublishResult
+import com.hypertino.hyperbus.transport.api.ServiceRegistrator
 import com.hypertino.hyperbus.transport.api.matchers.RequestMatcher
+import com.hypertino.hyperbus.transport.registrators.DummyRegistrator
+import com.typesafe.config.ConfigFactory
 import monix.eval.Task
 import monix.execution.Ack.Continue
 import monix.execution.Scheduler
-import monix.reactive.observers.Subscriber
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Millis, Seconds, Span}
 import org.scalatest.{BeforeAndAfter, FreeSpec, Matchers}
 import scaldi.Module
 
-import scala.collection.mutable
+import scala.concurrent.Await
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
-
-@body("mock")
-case class MockBody(test: String) extends Body
-
-@request(Method.POST, "hb://mock")
-case class MockRequest(partitionId: String, body: MockBody) extends Request[MockBody]
-
-@request(Method.POST, "hb://mock1")
-case class MockRequest1(partitionId: String, body: MockBody) extends Request[MockBody]
-
-@request(Method.POST, "hb://mock2")
-case class MockRequest2(partitionId: String, body: MockBody) extends Request[MockBody]
 
 class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with BeforeAndAfter with Eventually {
   implicit val mcx = MessagingContext("123")
-  val requestDeserializer: RequestDeserializer[MockRequest] = MockRequest.apply(_: Reader, _: Headers)
   implicit val scheduler = monix.execution.Scheduler.Implicits.global
   implicit val injector = new Module {
     bind [Scheduler] to scheduler
+    bind [ServiceRegistrator] to DummyRegistrator
   }
   implicit val defaultPatience = PatienceConfig(timeout =  Span(5, Seconds), interval = Span(50, Millis))
 
@@ -57,41 +45,49 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
   "KafkaTransport " - {
     "Publish and then Subscribe" in {
 
-      import ExecutionContext.Implicits.global
-
-      val subscriber1 = (request: MockRequest) ⇒ {
+      val subscriber1 = (request: DynamicRequest) ⇒ {
         Continue
       }
 
       // read previous messages if any
-      val cancelable1 = hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber1)
+      val cancelable1 = hyperbus.events[DynamicRequest](Some("sub1"))(
+        DynamicRequest.requestMeta,
+        DynamicRequestObservableMeta(RequestMatcher("hb://test", Method.PUT, None))
+      ).subscribe(subscriber1)
       Thread.sleep(3000)
       cancelable1.cancel()
 
       Thread.sleep(1000)
 
-      Task.gatherUnordered(List(
-        hyperbus.publish(MockRequest("1", MockBody("12345"))),
-        hyperbus.publish(MockRequest("2", MockBody("54321"))))
-      ).runOnComplete { r ⇒
-        r.get.foreach { publishResult ⇒
-          publishResult.sent should equal(Some(true))
-          publishResult.offset shouldNot equal(None)
-        }
-      }
+      val b1 = DynamicBody(Obj.from("test" → "12345"))
+      val r1 = hyperbus.publish(DynamicRequest(HRL("hb://test", Obj.from("partition_id" → 1)), Method.PUT, b1)).runAsync.futureValue
+      r1.size shouldBe 1
+      r1.head shouldBe a[KafkaPublishResult]
+      r1.head.offset should not be empty
+      println(r1)
+      //r1.head.asInstanceOf[KafkaPublishResult].committed.get should be > 0
+
+      val b2 = DynamicBody(Obj.from("test" → "54321"))
+      val r2 = hyperbus.publish(DynamicRequest(HRL("hb://test", Obj.from("partition_id" → 1)), Method.PUT, b2)).runAsync.futureValue
+      r2.size shouldBe 1
+      r2.head shouldBe a[KafkaPublishResult]
+      r2.head.offset should not be empty
+      println(r2)
 
       val cnt = new AtomicInteger(0)
 
-      val subscriber2 = (request: MockRequest) ⇒ {
-        request.body.test should (equal("12345") or equal("54321"))
+      val subscriber2 = (request: DynamicRequest) ⇒ {
+        request.body.content.dynamic.test should (equal(Text("12345")) or equal(Text("54321")))
         cnt.incrementAndGet()
         Continue
       }
 
+      val om = DynamicRequestObservableMeta(RequestMatcher("hb://test", Method.PUT, None))
+
       val cancelables = List(
-        hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber2),
-        hyperbus.events[MockRequest](Some("sub1")).subscribe(subscriber2),
-        hyperbus.events[MockRequest](Some("sub2")).subscribe(subscriber2)
+        hyperbus.events[DynamicRequest](Some("sub1"))(DynamicRequest.requestMeta, om).subscribe(subscriber2),
+        hyperbus.events[DynamicRequest](Some("sub1"))(DynamicRequest.requestMeta, om).subscribe(subscriber2),
+        hyperbus.events[DynamicRequest](Some("sub2"))(DynamicRequest.requestMeta, om).subscribe(subscriber2)
       )
 
       Thread.sleep(1000) // we need to wait until subscriptions will go acros the

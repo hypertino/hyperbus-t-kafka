@@ -63,6 +63,7 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
       }
       else {
         val recordKey = route.kafkaPartitionKeys.map { key: String ⇒ // todo: check partition key logic
+          // todo: add body, header extractors.
           message.headers.hrl.query.toMap.getOrElse(key,
             throw new KafkaPartitionKeyIsNotDefined(s"Argument $key is not defined for ${message.headers.hrl}")
           )
@@ -76,17 +77,14 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
         if (log.isTraceEnabled) {
           log.trace(s"Message $message is published to ${recordMetadata.topic()} ${if (record.key() != null) "/" + record.key}: ${recordMetadata.partition()}/${recordMetadata.offset()}")
         }
-        new PublishResult {
-          def sent = Some(true)
-          def offset = Some(s"${recordMetadata.partition()}/${recordMetadata.offset()}}")
-          override def toString = s"PublishResult(sent=$sent,offset=$offset)"
-        }
+        KafkaPublishResult(
+          committed=Some(recordMetadata.offset()>0),
+          kafkaOffset=recordMetadata.offset(),
+          partition=recordMetadata.partition(),
+          topic=recordMetadata.topic()
+        )
       case None ⇒ // todo: canceled?
-        new PublishResult {
-          def sent = Some(false)
-          def offset = None
-          override def toString = s"PublishResult(sent=$sent,offset=$offset)"
-        }
+        PublishResult.empty
     } doOnFinish {
       case Some(error) ⇒
         Task.now {
