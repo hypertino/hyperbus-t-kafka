@@ -6,6 +6,7 @@ import com.hypertino.binders.value.Obj
 import com.hypertino.hyperbus.model.{DynamicRequest, EmptyBody, Headers, RequestBase, RequestHeaders}
 import com.hypertino.hyperbus.serialization.{MessageReader, RequestBaseDeserializer}
 import com.hypertino.hyperbus.transport.api.matchers.RequestMatcher
+import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Ack.Continue
 import monix.execution.{Ack, Cancelable, Scheduler}
@@ -14,9 +15,8 @@ import monix.kafka.{KafkaConsumerConfig, KafkaConsumerObservable}
 import monix.reactive.observers.Subscriber
 import monix.reactive.{Observable, Observer, OverflowStrategy}
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import org.slf4j.LoggerFactory
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Random
 
@@ -27,12 +27,11 @@ private[transport] class TopicSubscription(
                                             lock: Object,
                                             releaseFun: () ⇒ Unit,
                                             implicit val scheduler: Scheduler
-                                          ) extends Observer[ConsumerRecord[String, String]] {
+                                          ) extends Observer[ConsumerRecord[String, String]] with StrictLogging {
   if (route.kafkaPartitionKeys.nonEmpty) {
     throw new IllegalArgumentException("KafkaServer: Partitioning isn't supported yet")
   }
 
-  private val log = LoggerFactory.getLogger(this.getClass)
   private var cancelable = Cancelable.empty
   private val subscribersRef = AtomicAny(List.empty[(Subscriber.Sync[RequestBase], RequestMatcher, RequestBaseDeserializer)])
   private lazy val observable = KafkaConsumerObservable[String,String](consumerConfig, List(route.kafkaTopic)).executeOn(Scheduler.io("kafka-server"))
@@ -74,6 +73,7 @@ private[transport] class TopicSubscription(
 
   // todo: handle deserialization/onNext exceptions
   override def onNext(elem: ConsumerRecord[String, String]): Future[Ack] = {
+    logger.trace(s"from kafka: key ${elem.key()}, ${elem.topic()}@${elem.partition}#${elem.offset()}: ${elem.value()}")
     MessageReader.fromString[RequestBase](elem.value(), (reader: Reader, headers: Headers) ⇒ {
       reader.mark(0)
       implicit val fakeRequest: RequestBase = DynamicRequest(EmptyBody, RequestHeaders(headers))
@@ -90,7 +90,7 @@ private[transport] class TopicSubscription(
   }
 
   override def onError(ex: Throwable): Unit = {
-    log.error(s"Kafka consumer on $route failed", ex)
+    logger.error(s"Kafka consumer on $route failed", ex)
     subscribersRef.get.foreach(_._1.onError(ex))
     lock.synchronized {
       releaseFun()

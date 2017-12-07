@@ -44,7 +44,6 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
 
   "KafkaTransport " - {
     "Publish and then Subscribe" in {
-
       val subscriber1 = (request: DynamicRequest) ⇒ {
         Continue
       }
@@ -64,19 +63,17 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
       r1.size shouldBe 1
       r1.head shouldBe a[KafkaPublishResult]
       r1.head.offset should not be empty
-      println(r1)
-      //r1.head.asInstanceOf[KafkaPublishResult].committed.get should be > 0
 
       val b2 = DynamicBody(Obj.from("test" → "54321"))
       val r2 = hyperbus.publish(DynamicRequest(HRL("hb://test", Obj.from("partition_id" → 1)), Method.PUT, b2)).runAsync.futureValue
       r2.size shouldBe 1
       r2.head shouldBe a[KafkaPublishResult]
       r2.head.offset should not be empty
-      println(r2)
 
       val cnt = new AtomicInteger(0)
 
       val subscriber2 = (request: DynamicRequest) ⇒ {
+        println(request)
         request.body.content.dynamic.test should (equal(Text("12345")) or equal(Text("54321")))
         cnt.incrementAndGet()
         Continue
@@ -89,8 +86,6 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
         hyperbus.events[DynamicRequest](Some("sub1"))(DynamicRequest.requestMeta, om).subscribe(subscriber2),
         hyperbus.events[DynamicRequest](Some("sub2"))(DynamicRequest.requestMeta, om).subscribe(subscriber2)
       )
-
-      Thread.sleep(1000) // we need to wait until subscriptions will go acros the
 
       eventually {
         cnt.get should equal(4)

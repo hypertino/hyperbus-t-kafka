@@ -18,7 +18,7 @@ object ConfigLoader {
         RequestMatcher(config.getValue("match"))
       else
         RequestMatcher.any
-      KafkaRoute(matcher, kafkaTopic.topic, kafkaTopic.partitionKeys.getOrElse(List.empty))
+      KafkaRoute(matcher, kafkaTopic.topic, kafkaTopic.partitionKeys)
     }.toList
   }
 
@@ -45,4 +45,4 @@ object ConfigLoader {
     ConfigFactory.load("com/hypertino/hyperbus/transport/kafkatransport/default-producer.conf").getConfig("kafka")
 }
 
-private[kafkatransport] case class KafkaTopicPojo(topic: String, partitionKeys: Option[List[String]])
+private[kafkatransport] case class KafkaTopicPojo(topic: String, partitionKeys: Option[String])

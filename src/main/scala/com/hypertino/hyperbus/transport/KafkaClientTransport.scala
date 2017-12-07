@@ -1,14 +1,13 @@
 package com.hypertino.hyperbus.transport
 
-import java.util.Properties
-import java.util.concurrent.TimeUnit
-
+import com.hypertino.binders.value.Obj
 import com.hypertino.hyperbus.model.{RequestBase, ResponseBase}
 import com.hypertino.hyperbus.serialization.ResponseBaseDeserializer
 import com.hypertino.hyperbus.transport.api._
 import com.hypertino.hyperbus.transport.kafkatransport.{ConfigLoader, KafkaPartitionKeyIsNotDefined, KafkaRoute}
 import com.hypertino.hyperbus.util.ConfigUtils._
 import com.hypertino.hyperbus.util.{FuzzyIndex, SchedulerInjector}
+import com.hypertino.parser.HEval
 import com.typesafe.config.Config
 import monix.eval.Task
 import monix.execution.{Cancelable, Scheduler}
@@ -18,16 +17,19 @@ import org.slf4j.LoggerFactory
 import scaldi.Injector
 
 import scala.concurrent.duration.FiniteDuration
-import scala.util.{Failure, Success}
 
 class KafkaClientTransport(producerConfig: KafkaProducerConfig,
                            routes: List[KafkaRoute],
+                           defaultTopic: Option[String],
+                           failedKeysTopic: Option[String],
                            encoding: String = "UTF-8")
                           (implicit val scheduler: Scheduler) extends ClientTransport {
 
   def this(config: Config, injector: Injector) = this(
     producerConfig = ConfigLoader.loadProducerConfig(config.getConfig("producer")),
     routes = ConfigLoader.loadRoutes(config.getConfigList("routes")),
+    defaultTopic = config.getOptionString("default-topic"),
+    failedKeysTopic = config.getOptionString("failed-keys-topic"),
     encoding = config.getOptionString("encoding").getOrElse("UTF-8")
   )(SchedulerInjector(config.getOptionString("scheduler"))(injector))
 
@@ -53,24 +55,32 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
     }
   }
 
-  private def publishToRoute(route: KafkaRoute, message: RequestBase): Task[PublishResult] = {
+  private def publishToRoute(route: KafkaRoute, message: RequestBase): Task[PublishResult] = Task.defer {
     val messageString = message.serializeToString
-
-    val record: ProducerRecord[String, String] =
-      if (route.kafkaPartitionKeys.isEmpty) {
-        // no partition key
-        new ProducerRecord(route.kafkaTopic, messageString)
+    val record = route.kafkaPartitionKeysExpression.map { e ⇒
+      try {
+        val context = Obj.from(
+          "headers" → Obj(message.headers),
+          "location" → message.headers.hrl.location,
+          "query" → message.headers.hrl.query,
+          "method" → message.headers.method
+        )
+        val key = new HEval(context)
+          .eval(e)
+          .toString()
+        new ProducerRecord[String,String](route.kafkaTopic, key, messageString)
+      } catch {
+        case t: Throwable ⇒
+          if (failedKeysTopic.isDefined) {
+            new ProducerRecord[String,String](failedKeysTopic.get, messageString)
+          }
+          else {
+            throw t
+          }
       }
-      else {
-        val recordKey = route.kafkaPartitionKeys.map { key: String ⇒ // todo: check partition key logic
-          // todo: add body, header extractors.
-          message.headers.hrl.query.toMap.getOrElse(key,
-            throw new KafkaPartitionKeyIsNotDefined(s"Argument $key is not defined for ${message.headers.hrl}")
-          )
-        }.foldLeft("")(_ + "," + _.toString.replace("\\", "\\\\").replace(",", "\\,"))
-
-        new ProducerRecord(route.kafkaTopic, recordKey.substring(1), messageString)
-      }
+    } getOrElse {
+      new ProducerRecord[String, String](route.kafkaTopic, messageString)
+    }
 
     producer.send(record).map {
       case Some(recordMetadata) ⇒
@@ -85,13 +95,6 @@ class KafkaClientTransport(producerConfig: KafkaProducerConfig,
         )
       case None ⇒ // todo: canceled?
         PublishResult.empty
-    } doOnFinish {
-      case Some(error) ⇒
-        Task.now {
-          log.error(s"Can't send to kafka. ${route.kafkaTopic} ${if (record.key() != null) "/" + record.key} : $message", error)
-        }
-      case None ⇒
-        Task.unit
     }
   }
 }

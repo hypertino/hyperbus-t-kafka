@@ -40,7 +40,7 @@ class KafkaServerTransport(
   override def events[REQ <: RequestBase](matcher: RequestMatcher, groupName: String, inputDeserializer: RequestDeserializer[REQ]): Observable[REQ] = {
     routesIndex.lookupAll(matcher).headOption match {
       case Some(route) ⇒
-        val key = TopicSubscriptionKey(route.kafkaTopic, route.kafkaPartitionKeys, groupName)
+        val key = TopicSubscriptionKey(route.kafkaTopic, /*route.kafkaPartitionKeys,*/ groupName)
         lock.synchronized {
           val subscription = subscriptions.getOrElseUpdate(key, {
             new TopicSubscription(consumerConfig.copy(groupId=groupName), encoding, route, lock, () ⇒ removeSubscription(key), scheduler)
