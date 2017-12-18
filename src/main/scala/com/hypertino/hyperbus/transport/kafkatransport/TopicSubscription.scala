@@ -97,7 +97,7 @@ private[transport] class TopicSubscription(
             None
         }
 
-        msg match {
+        val ack: Future[Ack] = msg match {
           case Some(finalMsg) ⇒
             subscriber.onNext(finalMsg).map {
               case Continue ⇒ Continue
@@ -115,6 +115,7 @@ private[transport] class TopicSubscription(
           case None ⇒
             Continue
         }
+        ack
       } getOrElse {
         logger.error(s"Message didn't matched any subscription: ${e._1.headers.underlying}: ${e._2}")
         Continue
