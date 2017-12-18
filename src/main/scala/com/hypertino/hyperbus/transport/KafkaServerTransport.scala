@@ -56,12 +56,21 @@ class KafkaServerTransport(
   override def shutdown(duration: FiniteDuration): Task[Boolean] = {
     Task
       .gatherUnordered {
-        subscriptions.map(_._2.close(duration))
+        lock.synchronized {
+          subscriptions.map(_._2.close(duration))
+        }
       }
       .timeout(duration)
       .map { _ ⇒
         true
       }
+  }
+
+
+  override def startServices(): Unit = {
+    lock.synchronized {
+      subscriptions.foreach(_._2.connect())
+    }
   }
 
   private def removeSubscription(key: TopicSubscriptionKey) = {
