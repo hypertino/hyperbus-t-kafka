@@ -39,7 +39,7 @@ private[transport] class TopicSubscription(
     .executeOn(Scheduler.io("kafka-server"))
     .map(kafkaRecordToHeadersAndBody)
     .doOnTerminate { r ⇒
-      logger.info(s"Consumer on $route/$this is terminated with $r")
+      logger.info(s"Consumer on $route/${consumerConfig.groupId}/$this is terminated with $r")
     }
 
   def connect(): Unit = {
@@ -60,7 +60,7 @@ private[transport] class TopicSubscription(
     new Observable[RequestBase] {
       override def unsafeSubscribeFn(subscriber: Subscriber[RequestBase]): Cancelable = {
         lock.synchronized {
-          logger.debug(s"Adding subscription: $matcher")
+          logger.debug(s"Adding subscription: $matcher on ${route.kafkaTopic}/${consumerConfig.groupId}")
           val m = subscribersMapRef.get
           val l = m.get(matcher) match {
             case Some(existing) ⇒
@@ -93,7 +93,7 @@ private[transport] class TopicSubscription(
         }
         catch {
           case t: Throwable ⇒
-            logger.error(s"Can't deserialize record: ${e._1.headers.underlying}: ${e._2}", t)
+            logger.error(s"Can't deserialize record in ${route.kafkaTopic}: ${e._1.headers.underlying}: ${e._2}", t)
             None
         }
 
@@ -117,7 +117,7 @@ private[transport] class TopicSubscription(
         }
         ack
       } getOrElse {
-        logger.error(s"Message didn't matched any subscription: ${e._1.headers.underlying}: ${e._2}")
+        logger.error(s"Message in ${route.kafkaTopic}/${consumerConfig.groupId} didn't matched any subscription: ${e._1.headers.underlying}: ${e._2}")
         Continue
       }
 
@@ -169,7 +169,7 @@ private[transport] class TopicSubscription(
   }
 
   private def kafkaRecordToHeadersAndBody(elem: ConsumerRecord[String, String]): Option[(RequestBase, String)] = {
-    logger.trace(s"kafka~> key ${elem.key()}, ${elem.topic()}@${elem.partition}#${elem.offset()}: ${elem.value()}")
+    logger.trace(s"kafka~> key ${elem.key()}, ${elem.topic()}:${consumerConfig.groupId}@${elem.partition}#${elem.offset()}: ${elem.value()}")
     var body: String = null
     try {
       val requestWithHeaders = MessageReader.fromString[RequestBase](elem.value(), (r: Reader, h: Headers) ⇒ {
@@ -180,7 +180,7 @@ private[transport] class TopicSubscription(
       Some(requestWithHeaders, body)
     } catch {
       case t: Throwable ⇒
-        logger.error(s"Can't deserialize record: ${elem.key()}, ${elem.topic()}@${elem.partition}#${elem.offset()}: ${elem.value()}", t)
+        logger.error(s"Can't deserialize record: ${elem.key()}, ${elem.topic()}:${consumerConfig.groupId}@${elem.partition}#${elem.offset()}: ${elem.value()}", t)
         None
     }
   }
