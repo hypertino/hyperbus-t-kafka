@@ -40,6 +40,7 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
     if (hyperbus != null) {
       Await.result(hyperbus.shutdown(10.seconds).runAsync, 10.seconds)
     }
+    Thread.sleep(10000)
   }
 
   def consumeAll(group: String, topic: String, wait: Int=3000) = {
@@ -55,6 +56,7 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
     "Publish and then Subscribe" in {
       consumeAll("sub1", "hyperbus-test")
       consumeAll("sub2", "hyperbus-test")
+      Thread.sleep(10000)
 
       val b1 = DynamicBody(Obj.from("test" → "12345"))
       val r1 = hyperbus.publish(DynamicRequest(HRL("hb://test", Obj.from("partition_id" → 1)), Method.PUT, b1)).runAsync.futureValue
@@ -99,6 +101,7 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
   "Publish and then Subscribe with Same Group/Topic but different URI" in {
     consumeAll("sub1", "hyperbus-testa")
     consumeAll("sub2", "hyperbus-testa")
+    Thread.sleep(10000)
 
     val b1 = DynamicBody(Obj.from("test" → "12345"))
     val r1 = hyperbus.publish(DynamicRequest(HRL("hb://testa1", Obj.from("partition_id" → 1)), Method.PUT, b1)).runAsync.futureValue
