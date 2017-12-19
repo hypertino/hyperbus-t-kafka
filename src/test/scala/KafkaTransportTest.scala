@@ -97,8 +97,8 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
   }
 
   "Publish and then Subscribe with Same Group/Topic but different URI" in {
-    consumeAll("sub1", "hyperbus-test")
-    consumeAll("sub2", "hyperbus-test")
+    consumeAll("sub1", "hyperbus-testa")
+    consumeAll("sub2", "hyperbus-testa")
 
     val b1 = DynamicBody(Obj.from("test" → "12345"))
     val r1 = hyperbus.publish(DynamicRequest(HRL("hb://testa1", Obj.from("partition_id" → 1)), Method.PUT, b1)).runAsync.futureValue
