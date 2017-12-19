@@ -21,6 +21,8 @@ env:
 before_install:
   - docker run -d --net host --name zookeeper wurstmeister/zookeeper
   - docker run -d --net host --name kafka --env KAFKA_ADVERTISED_HOST_NAME=localhost --env KAFKA_ZOOKEEPER_CONNECT=localhost:2181 wurstmeister/kafka
+  - docker exec -it kafka /opt/kafka_2.12-1.0.0/bin/kafka-consumer-groups.sh --new-consumer --bootstrap-server localhost:9092 --group sub1 --describe
+  - docker exec -it kafka /opt/kafka_2.12-1.0.0/bin/kafka-consumer-groups.sh --new-consumer --bootstrap-server localhost:9092 --group sub2 --describe
 
 after_failure:
   - docker exec -it kafka /opt/kafka_2.12-1.0.0/bin/kafka-consumer-groups.sh --new-consumer --bootstrap-server localhost:9092 --group sub1 --describe
