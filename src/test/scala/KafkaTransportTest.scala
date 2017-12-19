@@ -6,10 +6,13 @@ import com.hypertino.hyperbus.model.{DynamicBody, DynamicRequest, DynamicRequest
 import com.hypertino.hyperbus.transport.KafkaPublishResult
 import com.hypertino.hyperbus.transport.api.ServiceRegistrator
 import com.hypertino.hyperbus.transport.api.matchers.RequestMatcher
+import com.hypertino.hyperbus.transport.kafkatransport.ConfigLoader
 import com.hypertino.hyperbus.transport.registrators.DummyRegistrator
 import com.typesafe.config.ConfigFactory
 import monix.execution.Ack.Continue
 import monix.execution.Scheduler
+import monix.kafka.KafkaConsumerObservable
+import monix.reactive.Observer
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Millis, Seconds, Span}
 import org.scalatest.{BeforeAndAfterEach, FreeSpec, Matchers}
@@ -40,12 +43,12 @@ class KafkaTransportTest extends FreeSpec with ScalaFutures with Matchers with B
   }
 
   def consumeAll(group: String, topic: String, wait: Int=3000) = {
-//    val kafkaConsumer = KafkaConsumerObservable[String,String](ConfigLoader.loadConsumerConfig(config).copy(groupId=group), List(topic))
-//    val cancelable = kafkaConsumer
-//      .subscribe(Observer.dump(s"consume-$group"))
-//    Thread.sleep(2*wait/3)
-//    cancelable.cancel()
-//    Thread.sleep(wait/3)
+    val kafkaConsumer = KafkaConsumerObservable[String,String](ConfigLoader.loadConsumerConfig(config).copy(groupId=group), List(topic))
+    val cancelable = kafkaConsumer
+      .subscribe(Observer.dump(s"consume-$group"))
+    Thread.sleep(2*wait/3)
+    cancelable.cancel()
+    Thread.sleep(wait/3)
   }
 
   "KafkaTransport " - {
